@@ -17,7 +17,8 @@
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition Height="1*"/>
-            <RowDefinition Height="2*"/>
+            <RowDefinition Height="5*"/>
+            <RowDefinition Height="1*"/>
             <RowDefinition Height="1*"/>
         </Grid.RowDefinitions>
         <Button Content="Load current song file" Click="UWFile_Click" Grid.Row="0" Grid.Column="0" Margin="10"/>
@@ -25,9 +26,10 @@
         <Button Content="Start watchdog"  Margin="10"  Click="Start_Click" Grid.Row="0" Grid.Column="2"/>
         <Button Content="Play music"  Margin="10"  Click="Play_Click" Grid.Row="0" Grid.Column="3"/>
         <Button Content="Stop playing"  Click="Stop_Click" Grid.Row="0" Grid.Column="4" Margin="10"/>
-        <ScrollViewer Grid.Column="0" Grid.Row="1" Grid.ColumnSpan="5" VerticalAlignment="Top"  MaxHeight="120" MaxWidth="500">
+        <ScrollViewer Grid.Column="0" Grid.Row="1" Grid.ColumnSpan="5" Height="200">
             <ListView x:Name="EventsList"/>
         </ScrollViewer>
         <Label x:Name="CurrentSongLabel" Content="" Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="5" HorizontalAlignment="Center"/>
+        <Label x:Name="WatchDogStatus" Content="" Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="5" HorizontalAlignment="Center"/>
     </Grid>
 </Window>

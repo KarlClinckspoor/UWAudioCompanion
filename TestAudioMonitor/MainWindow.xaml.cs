@@ -9,6 +9,7 @@ using System.Linq;
 using System.Media;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -34,7 +35,10 @@ public partial class MainWindow : Window
     private static WaveOutEvent? _outputDevice;
     private static AudioFileReader? _audioFile;
     private static int _previousSongId = -1;
-    private static bool _stopPlaying = false;
+    private static bool _playing = false;
+    private static DateTime _previousModificationDate;
+    private static bool _previousSongFailedToPlay;
+    private static bool runWatchDog = true;
     public MainWindow()
     {
         InitializeComponent();
@@ -58,6 +62,7 @@ public partial class MainWindow : Window
 
     private void Start_Click(object sender, RoutedEventArgs e)
     {
+        runWatchDog = true;
         if ((_pathToUwFile is null) | (_pathToUwFile == ""))
         {
             MessageBox.Show("Before proceeding, please specify a path to the UW file", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -73,10 +78,14 @@ public partial class MainWindow : Window
             MessageBox.Show("Song Paths weren't loaded properly!", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
-        _watcher = new FileSystemWatcher(Path.GetDirectoryName(_pathToUwFile), Path.GetFileName(_pathToUwFile));
-        _watcher.NotifyFilter = NotifyFilters.LastWrite;
-        _watcher.Changed += OnFileChanged;
-        _watcher.EnableRaisingEvents = true;
+        //_watcher = new FileSystemWatcher(Path.GetDirectoryName(_pathToUwFile), Path.GetFileName(_pathToUwFile));
+        //_watcher.NotifyFilter = NotifyFilters.LastWrite;
+        //_watcher.Changed += OnFileChanged;
+        //_watcher.EnableRaisingEvents = true;
+
+        WatchDogStatus.Content = $"Watching {_pathToUwFile}";
+
+        John.Dispatcher.InvokeAsync(WatchForFileChange, System.Windows.Threading.DispatcherPriority.SystemIdle);
 
         var writer = File.CreateText(PathToPreviousConfig);
         writer.Write(_pathToConfigFile);
@@ -84,7 +93,6 @@ public partial class MainWindow : Window
         writer.Write(_pathToUwFile);
         writer.Flush();
         writer.Close();
-        _stopPlaying = false;
     }
 
     private void UWFile_Click(object sender, RoutedEventArgs e)
@@ -171,45 +179,69 @@ public partial class MainWindow : Window
 
     private void Stop_Click(object sender, RoutedEventArgs e)
     {
+        StopPlaying();
+    }
+
+    private void StopPlaying()
+    {
         _outputDevice?.Stop();
         CurrentSongLabel.Content = string.Empty;
-        _stopPlaying = true;
+        _playing = false;
+        _previousSongId = -1;
+        _outputDevice?.Dispose();
+        _audioFile?.Dispose();
+        runWatchDog = false;
+        WatchDogStatus.Content = string.Empty;
     }
 
 
-    // TODO: Since this gets accessed by another thread, not the main thread, any references to widgets have to be removed
-    private void OnFileChanged(object sender, FileSystemEventArgs e)
+    private void WatchForFileChange()
     {
-        if (_songPaths is null)
+        if (!runWatchDog) { return; }
+        // Readding itself, so it always executes
+        John.Dispatcher.InvokeAsync(WatchForFileChange, System.Windows.Threading.DispatcherPriority.SystemIdle);
+        // Checks if the paths weren't set, to avoid any complications
+        if (_pathToUwFile is null) { return; } 
+        if (_songPaths is null) { return; }
+        // if (_playing == false) { return; }
+
+        var lastChanged = File.GetLastWriteTime(_pathToUwFile);
+        if (lastChanged == _previousModificationDate) { return; }
+
+        // Fetches the file content and prevents file ownership errors by just trying again later
+        var content = "";
+        try
         {
-            MessageBox.Show("Song paths dict is null... Bug");
+            content = File.ReadAllText(_pathToUwFile);
+        }
+        catch (IOException)
+        {
             return;
         }
 
-        var content = File.ReadAllText(e.FullPath);
         int.TryParse(content, out int trackNumber);
-
-        // Don't change song if it isn't a different track
-        if (_previousSongId == trackNumber)
-        {
-            return;
-        }
+        if (_previousSongId == trackNumber) { return; }
 
         var songPath = _songPaths.GetValueOrDefault(trackNumber);
         if (string.IsNullOrEmpty(songPath))
         {
-            // EventsList.Items.Add($"Couldn't play song for track number {trackNumber}");
+            if (!_previousSongFailedToPlay)
+            {
+                EventsList.Items.Add($"Couldn't play song for track number {trackNumber}");
+            }
+            _previousSongFailedToPlay = true;
+            StopPlaying();
             return;
         }
+        _previousSongFailedToPlay = false;
+        _previousSongId = trackNumber;
         PlaySong(songPath);
     }
 
     private void PlaySong(string songPath)
     {
-        if (string.IsNullOrEmpty(songPath))
-        {
-            return;
-        }
+        if (_playing) { return; }
+        if (string.IsNullOrEmpty(songPath)) { return; }
 
         _outputDevice ??= new WaveOutEvent();
 
@@ -218,7 +250,7 @@ public partial class MainWindow : Window
         _outputDevice.Play();
         CurrentSongLabel.Content = $"Playing: {Path.GetFileNameWithoutExtension(songPath)}";
         _outputDevice.PlaybackStopped += ResetSong;
-        _stopPlaying = false;
+        _playing = true;
     }
 
     private void Play_Click(object sender, RoutedEventArgs e)
@@ -240,7 +272,7 @@ public partial class MainWindow : Window
 
     private void ResetSong(object? sender, StoppedEventArgs e)
     {
-        if (_stopPlaying)
+        if (!_playing)
         {
             return;
         }
