@@ -1,26 +1,15 @@
-﻿using Microsoft.Win32;
-using NAudio.Wave;
-using System;
+﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Media;
-using System.Text;
 using System.Text.Json;
-using System.Threading;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
+using Microsoft.Win32;
+using NAudio.Wave;
+
 // using System.Windows.Shapes;
 
-namespace TestAudioMonitor;
+namespace UWAudioCompanion;
 
 /// <summary>
 /// Interaction logic for MainWindow.xaml
@@ -30,15 +19,14 @@ public partial class MainWindow : Window
     private static string? _pathToConfigFile;
     private static string? _pathToUwFile;
     private static Dictionary<int, string>? _songPaths;
-    private static FileSystemWatcher? _watcher;
     private const string PathToPreviousConfig = "previous_settings.txt";
     private static WaveOutEvent? _outputDevice;
     private static AudioFileReader? _audioFile;
     private static int _previousSongId = -1;
-    private static bool _playing = false;
+    private static bool _playing;
     private static DateTime _previousModificationDate;
     private static bool _previousSongFailedToPlay;
-    private static bool runWatchDog = true;
+    private static bool _runWatchDog = true;
     public MainWindow()
     {
         InitializeComponent();
@@ -58,11 +46,12 @@ public partial class MainWindow : Window
         {
             EventsList.Items.Add($"Tried loading previous settings from {Path.GetFullPath(PathToPreviousConfig)} but some of the files referenced couldn't be found");
         }
+        _previousModificationDate = DateTime.UnixEpoch;
     }
 
     private void Start_Click(object sender, RoutedEventArgs e)
     {
-        runWatchDog = true;
+        _runWatchDog = true;
         if ((_pathToUwFile is null) | (_pathToUwFile == ""))
         {
             MessageBox.Show("Before proceeding, please specify a path to the UW file", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -190,14 +179,14 @@ public partial class MainWindow : Window
         _previousSongId = -1;
         _outputDevice?.Dispose();
         _audioFile?.Dispose();
-        runWatchDog = false;
+        _runWatchDog = false;
         WatchDogStatus.Content = string.Empty;
     }
 
 
     private void WatchForFileChange()
     {
-        if (!runWatchDog) { return; }
+        if (!_runWatchDog) { return; }
         // Readding itself, so it always executes
         John.Dispatcher.InvokeAsync(WatchForFileChange, System.Windows.Threading.DispatcherPriority.SystemIdle);
         // Checks if the paths weren't set, to avoid any complications
@@ -209,7 +198,7 @@ public partial class MainWindow : Window
         if (lastChanged == _previousModificationDate) { return; }
 
         // Fetches the file content and prevents file ownership errors by just trying again later
-        var content = "";
+        string content;
         try
         {
             content = File.ReadAllText(_pathToUwFile);
@@ -219,7 +208,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        int.TryParse(content, out int trackNumber);
+        var tryParse = int.TryParse(content, out int trackNumber);
+        if (!tryParse)
+        {
+            EventsList.Items.Add($"Couldn't interpret {content} form the UW file");
+        }
         if (_previousSongId == trackNumber) { return; }
 
         var songPath = _songPaths.GetValueOrDefault(trackNumber);
@@ -255,7 +248,7 @@ public partial class MainWindow : Window
 
     private void Play_Click(object sender, RoutedEventArgs e)
     {
-        if ((_songPaths is not null) & (_pathToUwFile is not null))
+        if ((_songPaths is not null) && (_pathToUwFile is not null))
         {
             string content = File.ReadAllText(_pathToUwFile);
             int.TryParse(content, out int trackNumber);
@@ -276,7 +269,7 @@ public partial class MainWindow : Window
         {
             return;
         }
-        if ((_outputDevice is not null) & (_audioFile is not null))
+        if ((_outputDevice is not null) && (_audioFile is not null))
         {
             if (_outputDevice.PlaybackState == PlaybackState.Stopped) 
             {
